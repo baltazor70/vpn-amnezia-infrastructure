@@ -14,7 +14,10 @@
 Этот проект — готовое решение для развёртывания личного VPN-сервера с полной автоматизацией. Все компоненты написаны на Bash, используют Docker и управляются через Telegram-бота.
 
 **Идеально подходит для:**
+<<<<<<< HEAD
 - 👨‍👩‍👧‍👦 Личного использования
+=======
+>>>>>>> 0f37680 (Fix scripts table formatting in README)
 - 🏢 Малых команд (до 40 устройств)
 - 🎓 Обучения и экспериментов с VPN-инфраструктурой
 
@@ -49,6 +52,25 @@
 ---
 
 ## 🏗️ Архитектура проекта
+
+```mermaid
+graph TB
+    subgraph Clients["📱 Клиенты (19)"]
+        iOS["iPhone (17)"]
+        Android["Android (2)"]
+    end
+    
+    subgraph Server["🇳🇱 Сервер (VPS)"]
+        Docker["🐳 Docker: AmneziaWG"]
+        Bot["🤖 Telegram Bot"]
+        Fail2Ban["🛡️ Fail2ban"]
+        Backup["💾 Авто-бэкапы"]
+    end
+    
+    Clients -->|AmneziaWG UDP| Docker
+    Docker --> Bot
+    Docker --> Fail2Ban
+    Docker --> Backup
 
 ---
 
