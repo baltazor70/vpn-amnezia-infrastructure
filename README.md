@@ -71,32 +71,33 @@
 
 ---
 
-## 📁 Структура проекта
+# 📁 Структура проекта
 
-vpn-amnezia-infrastructure/
-├── README.md # Документация
-├── LICENSE # MIT License
-├── .gitignore # Исключения Git
-│
-├── scripts/
-│ ├── vpn-bot-listener.sh # Telegram-бот
-│ ├── vpn-alert.sh # Уведомления
-│ ├── cleanup-server.sh # Очистка диска
-│ ├── backup-docker.sh # Бэкапы
-│ ├── vpn-container-watchdog.sh # Авто-восстановление
-│ ├── auto-reboot.sh # Перезагрузка
-│ ├── post-reboot-check.sh # Проверка после рестарта
-│ ├── resource-monitor.sh # Мониторинг ресурсов
-│ ├── vpn-monitor.sh # Статус VPN
-│ ├── vpn-traffic.sh # Трафик клиентов
-│ └── safe-ports.txt # Безопасные порты
-│
-├── systemd/
-│ └── vpn-bot.service # Автозапуск бота
-│
-└── examples/
-└── .vpn-env.example # Шаблон переменных
+**Корневые файлы:**
+- `README.md` — документация
+- `LICENSE` — лицензия MIT
+- `.gitignore` — исключения Git
 
+**Папка `scripts/`:**
+- `vpn-bot-listener.sh` — Telegram-бот
+- `vpn-alert.sh` — уведомления
+- `cleanup-server.sh` — очистка диска
+- `backup-docker.sh` — бэкапы
+- `vpn-container-watchdog.sh` — авто-восстановление
+- `auto-reboot.sh` — перезагрузка
+- `post-reboot-check.sh` — проверка после рестарта
+- `resource-monitor.sh` — мониторинг ресурсов
+- `vpn-monitor.sh` — статус VPN
+- `vpn-traffic.sh` — трафик клиентов
+- `safe-ports.txt` — безопасные порты
+
+**Папка `systemd/`:**
+- `vpn-bot.service` — автозапуск бота
+
+**Папка `examples/`:**
+- `.vpn-env.example` — шаблон переменных
+
+---
 
 ---
 
