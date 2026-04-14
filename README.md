@@ -34,30 +34,13 @@
 
 ## 🏗️ Архитектура
 
-┌─────────────────────┐
-│ Клиенты (до 40) │
-│ AmneziaWG (UDP) │
-└──────────┬──────────┘
-│
-▼
-┌─────────────────────┐
-│ Сервер (VPS) │
-│ │
-│ ┌───────────────┐ │
-│ │ AmneziaWG │ │
-│ │ Docker │ │
-│ └───────────────┘ │
-│ ┌───────────────┐ │
-│ │ Telegram Bot │ │
-│ └───────────────┘ │
-│ ┌───────────────┐ │
-│ │ Fail2ban │ │
-│ └───────────────┘ │
-│ ┌───────────────┐ │
-│ │ Авто-бэкапы │ │
-│ └───────────────┘ │
-└─────────────────────┘
-
+**Клиенты (до 40)**  
+↓ AmneziaWG (UDP)  
+**Сервер VPS**  
+├─ Docker: AmneziaWG  
+├─ Telegram Bot (управление)  
+├─ Fail2ban (защита SSH)  
+└─ Авто-бэкапы (30 дней)
 
 ---
 
@@ -94,6 +77,7 @@ vpn-amnezia-infrastructure/
 ├── README.md # Документация
 ├── LICENSE # MIT License
 ├── .gitignore # Исключения Git
+│
 ├── scripts/
 │ ├── vpn-bot-listener.sh # Telegram-бот
 │ ├── vpn-alert.sh # Уведомления
@@ -106,8 +90,10 @@ vpn-amnezia-infrastructure/
 │ ├── vpn-monitor.sh # Статус VPN
 │ ├── vpn-traffic.sh # Трафик клиентов
 │ └── safe-ports.txt # Безопасные порты
+│
 ├── systemd/
 │ └── vpn-bot.service # Автозапуск бота
+│
 └── examples/
 └── .vpn-env.example # Шаблон переменных
 
@@ -141,12 +127,11 @@ systemctl enable --now vpn-bot.service
 
 # 6. Проверь: отправь /start в Telegram
 
-Защита
+ащита
 ✅ Fail2ban — защита SSH от брутфорса
 ✅ Автообновления — unattended-upgrades
 ✅ Шифрованные бэкапы конфигов WireGuard
 ✅ Подтверждение критических действий
-📊 Мониторинг
 
 Просмотр логов
 
@@ -160,7 +145,5 @@ journalctl -u vpn-bot.service -f
 # Восстановление конфигов:
 cat backup_*/amnezia_awg_config.tar.gz | \
     docker exec -i amnezia-awg2 tar xzf - -C /opt/amnezia/awg
-
-⚠️ Примечание: Проект предоставляется «как есть». Автор не несёт ответственности за последствия использования.
 
 
