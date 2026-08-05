@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Status</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; font-size: 26px; }
+        
+        .login-box {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 40px 30px;
+            text-align: center;
+            max-width: 350px;
+            margin: 80px auto;
+        }
+        .login-box input {
+            width: 100%; padding: 14px; margin: 20px 0 10px;
+            border: none; border-radius: 10px; font-size: 16px;
+            background: rgba(255,255,255,0.9); color: #333;
+        }
+        .login-box button {
+            width: 100%; padding: 14px; background: #3b82f6; color: #fff;
+            border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer;
+        }
+        .error-msg { color: #f87171; margin-top: 10px; font-size: 14px; display: none; }
+        
+        .status-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .status-item:last-child { border-bottom: none; }
+        .badge {
+            display: inline-block; padding: 5px 12px; border-radius: 20px;
+            font-size: 13px; font-weight: 600;
+        }
+        .badge-online { background: #22c55e; }
+        .badge-offline { background: #ef4444; }
+        
+        .chart-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .chart-card h2 { margin-bottom: 15px; font-size: 19px; }
+        
+        .troubleshoot {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 25px;
+        }
+        .troubleshoot h2 { margin-bottom: 20px; font-size: 19px; }
+        .step {
+            background: rgba(255,255,255,0.08);
+            padding: 15px; border-radius: 10px; margin-bottom: 12px;
+            display: flex; align-items: flex-start;
+        }
+        .step-num {
+            background: #3b82f6; width: 26px; height: 26px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin-right: 12px; flex-shrink: 0; font-weight: bold; font-size: 14px;
+        }
+        .step-text { font-size: 14px; line-height: 1.5; }
+        .warning {
+            background: rgba(251,191,36,0.2); border-left: 3px solid #fbbf24;
+            padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 13px;
+        }
+        .footer { text-align: center; margin-top: 25px; opacity: 0.6; font-size: 13px; }
+        .logout-btn {
+            background: rgba(239,68,68,0.8); color: #fff; border: none;
+            padding: 10px 24px; border-radius: 8px; cursor: pointer; margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="login-screen" class="login-box">
+            <h2>🔐 VPN Status</h2>
+            <p style="opacity:0.8; margin-bottom:10px;">Введите пароль</p>
+            <input type="password" id="pwd" placeholder="Пароль" onkeydown="if(event.key==='Enter') doLogin()">
+            <button onclick="doLogin()">Войти</button>
+            <div id="err" class="error-msg">Неверный пароль!</div>
+        </div>
+        
+        <div id="dash" style="display: none;">
+            <h1>🔐 VPN Status</h1>
+            
+            <div class="status-card">
+                <div class="status-item">
+                    <span>🛡️ VPN-сервис</span>
+                    <span id="vpn-stat" class="badge">Проверка...</span>
+                </div>
+                <div class="status-item">
+                    <span>🖥 Сервер</span>
+                    <span class="badge badge-online">Онлайн</span>
+                </div>
+                <div class="status-item">
+                    <span>📊 CPU</span>
+                    <span id="cpu">Загрузка...</span>
+                </div>
+                <div class="status-item">
+                    <span>💾 RAM</span>
+                    <span id="ram">Загрузка...</span>
+                </div>
+                <div class="status-item">
+                    <span>💿 Диск</span>
+                    <span id="disk">Загрузка...</span>
+                </div>
+                <div class="status-item">
+                    <span>🌍 Доступность Cloudflare</span>
+                    <span id="ping1">Загрузка...</span>
+                </div>
+                <div class="status-item">
+                    <span>🇷🇺 Доступность Яндекса</span>
+                    <span id="ping2">Загрузка...</span>
+                </div>
+            </div>
+            
+            <div class="chart-card">
+                <h2>📊 CPU</h2>
+                <canvas id="cpuChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h2>💾 RAM</h2>
+                <canvas id="ramChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h2>💿 Диск</h2>
+                <canvas id="diskChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h2>📈 Сеть</h2>
+                <canvas id="trafficChart"></canvas>
+            </div>
+            
+            <div class="troubleshoot">
+                <h2>❓ Не подключается?</h2>
+                <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Перезапустите приложение AmneziaVPN</strong><br>Полностью закройте и откройте заново</div></div>
+                <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Проверьте интернет</strong><br>Попробуйте открыть любой сайт</div></div>
+                <div class="step"><div class="step-num">3</div><div class="step-text"><strong>WiFi или сотовая?</strong><br>Если только на сотовой — <strong>белые списки</strong>.<div class="warning">💡 <strong>Решение:</strong> используйте WiFi</div></div></div>
+                <div class="step"><div class="step-num">4</div><div class="step-text"><strong>Переустановите профиль</strong><br>Удалите и добавьте заново</div></div>
+            </div>
+            
+            <div class="footer">Обновлено: <span id="time">-</span></div>
+            <div style="text-align:center;"><button class="logout-btn" onclick="doLogout()">🚪 Выйти</button></div>
+        </div>
+    </div>
+
+    <script>
+        let cpuChart, ramChart, diskChart, trafficChart;
+
+        async function doLogin() {
+            const pwd = document.getElementById('pwd').value;
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password: pwd})
+            });
+            if (res.ok) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('dash').style.display = 'block';
+                refresh();
+                setInterval(refresh, 5000);
+            } else {
+                document.getElementById('err').style.display = 'block';
+            }
+        }
+
+        async function doLogout() {
+            await fetch('/logout', {method: 'POST'});
+            location.reload();
+        }
+
+        async function refresh() {
+            try {
+                const r = await fetch('/api/status');
+                if (r.status === 401) return doLogout();
+                const d = await r.json();
+                
+                // Статус VPN-сервиса
+                const vpnBadge = document.getElementById('vpn-stat');
+                if (d.vpn_service) {
+                    vpnBadge.textContent = 'Работает';
+                    vpnBadge.className = 'badge badge-online';
+                } else {
+                    vpnBadge.textContent = 'Не работает';
+                    vpnBadge.className = 'badge badge-offline';
+                }
+                
+                // Ресурсы
+                document.getElementById('cpu').textContent = d.cpu + '%';
+                document.getElementById('ram').textContent = d.ram_used + '/' + d.ram_total + ' MB';
+                document.getElementById('disk').textContent = d.disk + '%';
+                document.getElementById('ping1').textContent = d.ping_1111;
+                document.getElementById('ping2').textContent = d.ping_msk;
+                document.getElementById('time').textContent = d.timestamp;
+                
+                // Графики
+                const labels = d.metrics.map(m => m.time);
+                
+                updateChart('cpuChart', 'CPU %', labels, d.metrics.map(m => m.cpu), '#fbbf24', cpuChart, (c) => cpuChart = c);
+                updateChart('ramChart', 'RAM %', labels, d.metrics.map(m => m.ram), '#a855f7', ramChart, (c) => ramChart = c);
+                updateChart('diskChart', 'Диск %', labels, d.metrics.map(m => m.disk), '#ef4444', diskChart, (c) => diskChart = c);
+                
+                updateTrafficChart(labels, d.metrics);
+            } catch(e) { console.error(e); }
+        }
+        
+        function updateChart(id, label, labels, data, color, chartVar, setChart) {
+            const ctx = document.getElementById(id).getContext('2d');
+            if (chartVar) chartVar.destroy();
+            const newChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color + '20',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { labels: { color: '#fff' } } },
+                    scales: {
+                        x: { ticks: { color: '#fff', maxTicksLimit: 12 } },
+                        y: { ticks: { color: '#fff' }, beginAtZero: true }
+                    }
+                }
+            });
+            setChart(newChart);
+        }
+        
+        function updateTrafficChart(labels, metrics) {
+            const ctx = document.getElementById('trafficChart').getContext('2d');
+            if (trafficChart) trafficChart.destroy();
+            trafficChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Входящий (MB)',
+                        data: metrics.map(m => m.rx),
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }, {
+                        label: 'Исходящий (MB)',
+                        data: metrics.map(m => m.tx),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { labels: { color: '#fff' } } },
+                    scales: {
+                        x: { ticks: { color: '#fff', maxTicksLimit: 12 } },
+                        y: { ticks: { color: '#fff' }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

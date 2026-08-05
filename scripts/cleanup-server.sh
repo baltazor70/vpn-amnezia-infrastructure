@@ -1,4 +1,3 @@
-[ -f /root/.vpn-env ] && source /root/.vpn-env
 #!/bin/bash
 
 # ===========================

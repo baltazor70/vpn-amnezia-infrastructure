@@ -1,5 +1,5 @@
-[ -f /root/.vpn-env ] && source /root/.vpn-env
 #!/bin/bash
+source /root/.vpn-env
 # ═══════════════════════════════════════════════════════════════
 # 🛡️ VPN Container Watchdog — Авто-восстановление контейнера
 # Версия: 1.0

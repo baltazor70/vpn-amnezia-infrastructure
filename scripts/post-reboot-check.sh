@@ -1,10 +1,8 @@
-[ -f /root/.vpn-env ] && source /root/.vpn-env
 #!/bin/bash
+source /root/.vpn-env
 # post-reboot-check.sh — проверка статуса после перезагрузки (МСК время)
 
 # ==================== НАСТРОЙКИ ====================
-BOT_TOKEN="${BOT_TOKEN}"
-CHAT_ID="${CHAT_ID}"
 CONTAINER_NAME="amnezia-awg2"
 SERVER_NAME="🇳🇱 VPN-Server (Amsterdam)"
 LOG_FILE="/var/log/auto-reboot.log"

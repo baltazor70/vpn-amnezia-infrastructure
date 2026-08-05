@@ -1,12 +1,10 @@
-[ -f /root/.vpn-env ] && source /root/.vpn-env
 #!/bin/bash
+source /root/.vpn-env
 # backup-docker.sh — бэкап VPN инфраструктуры с уведомлениями об ошибках
 
 # ===========================
 # Настройки Telegram
 # ===========================
-BOT_TOKEN="${BOT_TOKEN}"
-CHAT_ID="${CHAT_ID}"
 
 # Функция отправки в Telegram
 send_telegram() {
