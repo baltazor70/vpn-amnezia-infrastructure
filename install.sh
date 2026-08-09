@@ -6,6 +6,10 @@ set -e
 
 if [ "$1" = "--check" ]; then
     echo "🔍 VPN Infrastructure Check"
+    # Fail2Ban checks
+    systemctl is-active --quiet fail2ban && echo "✅ fail2ban.service (active)" || echo "❌ fail2ban.service (inactive)"
+    sudo fail2ban-client status vpn-monitoring &>/dev/null && echo "✅ [vpn-monitoring] jail" || echo "❌ [vpn-monitoring] jail missing"
+    [ -f "/etc/fail2ban/action.d/telegram-ban.conf" ] && echo "✅ telegram-ban.conf" || echo "❌ telegram-ban.conf missing"
     echo "============================"
     for script in vpn-bot-listener.sh vpn-alert.sh audit-peers.sh cleanup-orphans.sh resource-monitor.sh vpn-monitor.sh metrics-logger.sh; do
         [ -f "/root/scripts/$script" ] && echo "✅ $script" || echo "❌ $script отсутствует"
@@ -19,6 +23,10 @@ if [ "$1" = "--check" ]; then
     crontab -l 2>/dev/null | grep -q "vpn-alert\|metrics-logger\|cleanup-orphans\|resource-monitor\|vpn-monitor" && echo "✅ cron-задачи" || echo "❌ cron-задачи отсутствуют"
     docker exec amnezia-awg2 wg show > /dev/null 2>&1 && echo "✅ WireGuard (отвечает)" || echo "❌ WireGuard (не отвечает)"
     ping -c 1 -W 2 1.1.1.1 > /dev/null 2>&1 && echo "✅ Ping 1.1.1.1" || echo "❌ Ping 1.1.1.1"
+    # Fail2Ban checks
+    systemctl is-active --quiet fail2ban && echo "✅ fail2ban.service (active)" || echo "❌ fail2ban.service (inactive)"
+    sudo fail2ban-client status vpn-monitoring &>/dev/null && echo "✅ [vpn-monitoring] jail" || echo "❌ [vpn-monitoring] jail missing"
+    [ -f "/etc/fail2ban/action.d/telegram-ban.conf" ] && echo "✅ telegram-ban.conf" || echo "❌ telegram-ban.conf missing"
     echo "============================"
     exit 0
 fi
@@ -51,6 +59,12 @@ if [ ! -d "$REPO_DIR" ]; then
     git clone https://github.com/baltazor70/vpn-amnezia-infrastructure.git "$REPO_DIR"
 else
     cd "$REPO_DIR" && git pull
+
+# 🔧 Deploy Fail2Ban configuration
+if [ -f "$REPO_DIR/deploy/fail2ban/deploy.sh" ]; then
+    echo "🛡 Deploying Fail2Ban Telegram alerts..."
+    bash "$REPO_DIR/deploy/fail2ban/deploy.sh"
+fi
 fi
 
 mkdir -p /root/scripts
