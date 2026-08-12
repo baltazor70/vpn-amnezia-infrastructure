@@ -33,6 +33,25 @@ def check_vpn_service():
     except:
         return False
 
+def get_active_users():
+    """Возвращает количество активных VPN-подключений (handshake ≤ 2 мин)"""
+    try:
+        output = subprocess.run(
+            ['docker', 'exec', 'amnezia-awg2', 'wg', 'show'],
+            capture_output=True, text=True, timeout=5
+        ).stdout
+        count = 0
+        for line in output.splitlines():
+            if 'latest handshake:' in line:
+                hs = line.split('latest handshake:')[1].strip()
+                if 'second' in hs or ('minute' in hs and '1 minute' in hs):
+                    count += 1
+                elif 'minute' in hs and '2 minute' not in hs:
+                    count += 1
+        return count
+    except:
+        return 0
+
 def read_metrics(file_name):
     try:
         with open(f'/var/log/vpn-metrics/{file_name}', 'r') as f:
@@ -53,9 +72,25 @@ def read_metrics(file_name):
     except:
         return []
 
+
+
+def get_fail2ban_dashboard():
+    stats = {'sshd': {'current': 0, 'total': 0}, 'vpn-monitoring': {'current': 0, 'total': 0}}
+    for jail in stats.keys():
+        try:
+            res = subprocess.run(['fail2ban-client', 'status', jail], capture_output=True, text=True, check=True, timeout=3)
+            for out_line in res.stdout.split('\n'):
+                if 'Currently banned:' in out_line:
+                    stats[jail]['current'] = int(out_line.split(':')[1].strip())
+                elif 'Total banned:' in out_line:
+                    stats[jail]['total'] = int(out_line.split(':')[1].strip())
+        except Exception:
+            continue
+    return stats
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', f2b_stats=get_fail2ban_dashboard())
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -81,9 +116,19 @@ def api_status():
         'disk': psutil.disk_usage('/').percent,
         'ping_1111': get_ping('1.1.1.1'),
         'ping_msk': get_ping('ya.ru'),
+        'active_users': get_active_users(),
         'metrics': read_metrics('cpu.log'),
         'timestamp': time.strftime('%H:%M:%S')
     })
+
+@app.route('/test')
+def test_page():
+    return 'OK'
+
+
+@app.route('/api/fail2ban')
+def api_fail2ban():
+    return jsonify(get_fail2ban_dashboard())
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8080)
