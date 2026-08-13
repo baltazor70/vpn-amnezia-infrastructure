@@ -17,12 +17,31 @@ END {
     if (peer && ip) printf "%s|%s|%s|%s\n", ip, peer, handshake, transfer
 }
 ' | sort -t. -k4 -n | while IFS='|' read ip key handshake traffic; do
-    # Ищем имя ТОЛЬКО по allowedIps, игнорируя allowed_ips
-    name=$(docker exec amnezia-awg2 cat /opt/amnezia/awg/clientsTable 2>/dev/null | \
-        awk -v ip="$ip" '
-        /"allowedIps": "/ { if ($0 ~ "\"" ip "/32\"") { found=1 } }
-        found && /"clientName":/ { print $0; found=0 }
-        ' | head -1 | awk -F'"' '{print $4}')
+    # 1. Проверяем локальный файл ip_names.txt
+    name=""
+    if [ -f /root/ip_names.txt ]; then
+        name=$(grep -E "^[^#]" /root/ip_names.txt 2>/dev/null | grep "^${ip} " | awk '{print $2}')
+    fi
+
+    # 2. Если не нашли — ищем по clientId (публичному ключу) в clientsTable
+    if [ -z "$name" ]; then
+        name=$(docker exec amnezia-awg2 cat /opt/amnezia/awg/clientsTable 2>/dev/null | \
+            awk -v key="$key" '
+            BEGIN { found=0 }
+            /"clientId":/ { if ($0 ~ key) { found=1 } }
+            found && /"clientName":/ { print $0; found=0 }
+            ' | head -1 | awk -F'"' '{print $4}')
+    fi
+
+    # 3. Если всё ещё нет — ищем по allowedIps (старый метод)
+    if [ -z "$name" ]; then
+        name=$(docker exec amnezia-awg2 cat /opt/amnezia/awg/clientsTable 2>/dev/null | \
+            awk -v ip="$ip" '
+            /"allowedIps": "/ { if ($0 ~ "\"" ip "/32\"") { found=1 } }
+            found && /"clientName":/ { print $0; found=0 }
+            ' | head -1 | awk -F'"' '{print $4}')
+    fi
+
     [ -z "$name" ] && name="Unknown"
     [ -z "$handshake" ] && handshake="N/A"
     [ -z "$traffic" ] && traffic="N/A"
