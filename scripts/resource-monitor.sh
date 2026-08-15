@@ -20,7 +20,7 @@ log() {
 
 log "=== Проверка ресурсов ==="
 
-CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 | cut -d'.' -f1)
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk "{print int($2 + $4)}")
 [ -z "$CPU_USAGE" ] && CPU_USAGE=$(vmstat 1 2 | tail -1 | awk '{print 100 - $15}')
 
 RAM_TOTAL=$(free -m | awk '/Mem:/{print $2}')
