@@ -8,11 +8,9 @@ REBOOT_TIMEOUT=60
 RESTART_TIMEOUT=60
 
 send_telegram() {
-    local message="$1"
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-        -d "chat_id=${CHAT_ID}" \
-        -d "text=${message}" \
-        -d "parse_mode=HTML"
+    local msg="$1"
+    ( curl -s --max-time 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${CHAT_ID}" -d "text=${msg}" -d "parse_mode=HTML" >/dev/null 2>&1 ) &
 }
 
 log_event() {
@@ -40,45 +38,61 @@ get_name_by_ip() {
 }
 
 check_reboot_confirmation() {
-    local chat_id="$1" message="$2" flag_file="/tmp/reboot_pending_${chat_id}"
+    local chat_id="$1" message="$2"
+    local flag_file="/tmp/reboot_pending_${chat_id}"
     [ ! -f "$flag_file" ] && return 1
-    local flag_time=$(cat "$flag_file" | head -1) now=$(date +%s) diff=$((now - flag_time))
+    local flag_time=$(head -1 "$flag_file")
+    local now=$(date +%s)
+    local diff=$((now - flag_time))
     if [ "$diff" -gt "$REBOOT_TIMEOUT" ]; then
-        rm -f "$flag_file"; send_telegram "⏰ <b>Время подтверждения истекло!</b>"; return 1
+        rm -f "$flag_file"
+        send_telegram "⏰ <b>Время подтверждения истекло!</b>"
+        return 1
     fi
-    local msg_lower=$(echo "$message" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    local msg_lower=$(echo "$message" | tr '[:upper:]' '[:lower:]' | tr -d ' \r')
     case "$msg_lower" in
         "да"|"yes"|"confirm"|"подтверждаю"|"🔄"|"✅")
             rm -f "$flag_file"
             send_telegram "✅ <b>Подтверждено! Перезагрузка через 10 секунд...</b>"
-            sleep 10; reboot & return 0 ;;
+            echo "$(date '+%F %T') REBOOT by $chat_id" >> /var/log/vpn-bot.log
+            setsid bash -c 'sleep 10; sync; /sbin/reboot' </dev/null >/dev/null 2>&1 &
+            return 0
+            ;;
         "нет"|"no"|"cancel"|"отмена"|"❌"|"🛑")
-            rm -f "$flag_file"; send_telegram "❌ <b>Перезагрузка отменена!</b>"; return 0 ;;
+            rm -f "$flag_file"
+            send_telegram "❌ <b>Перезагрузка отменена!</b>"
+            return 0
+            ;;
         *) return 2 ;;
     esac
 }
 
 check_restart_confirmation() {
-    local chat_id="$1" message="$2" flag_file="/tmp/restart_pending_${chat_id}"
+    local chat_id="$1" message="$2"
+    local flag_file="/tmp/restart_pending_${chat_id}"
     [ ! -f "$flag_file" ] && return 1
-    local flag_time=$(cat "$flag_file" | head -1) now=$(date +%s) diff=$((now - flag_time))
+    local flag_time=$(head -1 "$flag_file")
+    local now=$(date +%s)
+    local diff=$((now - flag_time))
     if [ "$diff" -gt "$RESTART_TIMEOUT" ]; then
-        rm -f "$flag_file"; send_telegram "⏰ <b>Время подтверждения истекло!</b>"; return 1
+        rm -f "$flag_file"
+        send_telegram "⏰ <b>Время подтверждения истекло!</b>"
+        return 1
     fi
-    local msg_lower=$(echo "$message" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    local msg_lower=$(echo "$message" | tr '[:upper:]' '[:lower:]' | tr -d ' \r')
     case "$msg_lower" in
         "да"|"yes"|"confirm"|"подтверждаю"|"🔄"|"✅")
             rm -f "$flag_file"
             send_telegram "🔄 <b>Перезапуск контейнера...</b>"
-            docker restart ${CONTAINER_NAME} >/dev/null 2>&1; sleep 5
-            if docker ps | grep -q "${CONTAINER_NAME}"; then
-                send_telegram "✅ <b>Контейнер перезапущен!</b>"
-            else
-                send_telegram "⚠️ <b>Контейнер не запустился!</b>"
-            fi
-            return 0 ;;
+            echo "$(date '+%F %T') RESTART by $chat_id" >> /var/log/vpn-bot.log
+            setsid bash -c "sleep 2; docker restart ${CONTAINER_NAME} >/dev/null 2>&1; sleep 5; if docker ps | grep -q ${CONTAINER_NAME}; then curl -s --max-time 10 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=✅ Контейнер перезапущен!' -d parse_mode=HTML >/dev/null 2>&1; else curl -s --max-time 10 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=⚠️ Контейнер не запустился!' -d parse_mode=HTML >/dev/null 2>&1; fi" </dev/null >/dev/null 2>&1 &
+            return 0
+            ;;
         "нет"|"no"|"cancel"|"отмена"|"❌")
-            rm -f "$flag_file"; send_telegram "❌ <b>Перезапуск отменен!</b>"; return 0 ;;
+            rm -f "$flag_file"
+            send_telegram "❌ <b>Перезапуск отменен!</b>"
+            return 0
+            ;;
         *) return 2 ;;
     esac
 }
@@ -87,11 +101,9 @@ cmd_status() {
     if ! docker ps | grep -q "${CONTAINER_NAME}"; then
         send_telegram "❌ <b>VPN Контейнер не запущен!</b>"; return
     fi
-
     WG_DATA=$(docker exec ${CONTAINER_NAME} wg show)
     CLIENT_COUNT=$(echo "$WG_DATA" | grep -c "peer:")
     ACTIVE_COUNT=0
-
     while IFS= read -r line; do
         handshake_line=$(echo "$line" | grep -o "latest handshake: .*")
         if [ -n "$handshake_line" ]; then
@@ -104,9 +116,7 @@ cmd_status() {
                 else if ($2=="second" || $2=="seconds") { print $1 }
                 else { print 99999 }
             }')
-            if [ "$hs_seconds" -le 120 ]; then
-                ((ACTIVE_COUNT++))
-            fi
+            [ "$hs_seconds" -le 120 ] && ((ACTIVE_COUNT++))
         fi
     done <<< "$(echo "$WG_DATA" | grep -A1 "latest handshake")"
 
@@ -122,16 +132,13 @@ cmd_status() {
             *) echo "0" ;;
         esac
     }
-
     TRANSFER_LINE=$(echo "$WG_DATA" | grep "transfer:" | head -1)
     RAW_RX=$(echo "$TRANSFER_LINE" | grep -oE "[0-9.]+ [A-Za-z]+" | head -1)
     RAW_TX=$(echo "$TRANSFER_LINE" | grep -oE "[0-9.]+ [A-Za-z]+" | tail -1)
     TOTAL_RX=$(parse_traffic "$RAW_RX"); TOTAL_TX=$(parse_traffic "$RAW_TX")
-
     CONTAINER_STATS=$(docker stats ${CONTAINER_NAME} --no-stream --format "{{.CPUPerc}} | {{.MemUsage}}")
     CONT_CPU=$(echo "$CONTAINER_STATS" | cut -d'|' -f1 | tr -d ' ')
     CONT_RAM=$(echo "$CONTAINER_STATS" | cut -d'|' -f2 | tr -d ' ')
-
     local host_cpu=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
     local host_ram=$(free -m | awk 'NR==2{printf "%.2f/%.2f MB (%.2f%%)", $3,$2,$3*100/$2}')
     local disk=$(df -h / | awk 'NR==2{print $5}')
@@ -140,12 +147,11 @@ cmd_status() {
     local ping2=$(ping -c 1 -W 2 ya.ru 2>&1 | grep "rtt" | awk -F'/' '{print $5}' | head -1)
     local container_status="❌ Не работает"
     docker ps | grep -q "${CONTAINER_NAME}" && container_status="✅ Работает"
-
     send_telegram "📊 <b>VPN СТАТУС</b>
 
 👥 <b>Клиенты:</b>
 ├ Всего: ${CLIENT_COUNT}
-└ Активных (Меньше 2 минут): ${ACTIVE_COUNT}
+└ Активных (≤2 мин): ${ACTIVE_COUNT}
 
 📈 <b>Трафик:</b>
 ├ Получено: ${TOTAL_RX} MB
@@ -175,15 +181,8 @@ cmd_users() {
     /allowed ips:/ { ip=$3; sub(/\/32/, "", ip) }
     /latest handshake:/ { hs=$0; sub(/.*latest handshake: /, "", hs) }
     /transfer:/ { transfer=$0; sub(/.*transfer: /, "", transfer) }
-    /^$/ {
-        if (peer && ip) {
-            printf "%s|%s|%s|%s\n", ip, peer, hs, transfer
-        }
-        peer=""; ip=""; hs=""; transfer=""
-    }
-    END {
-        if (peer && ip) printf "%s|%s|%s|%s\n", ip, peer, hs, transfer
-    }
+    /^$/ { if (peer && ip) { printf "%s|%s|%s|%s\n", ip, peer, hs, transfer } peer=""; ip=""; hs=""; transfer="" }
+    END { if (peer && ip) printf "%s|%s|%s|%s\n", ip, peer, hs, transfer }
     ' | sort -t. -k4 -n)
     local count=0
     local message="👥 <b>Список пользователей</b>
@@ -209,17 +208,12 @@ cmd_userstatus() {
     local search_ip="10.8.1.${search_octet}"
     local name=$(get_name_by_ip "$search_ip")
     [ -z "$name" ] && name="Unknown"
-    
-    local hs="N/A"
-    local transfer="N/A"
-    local status="🔴 Офлайн"
-    
+    local hs="N/A" transfer="N/A" status="🔴 Офлайн"
     local peer_data=$(docker exec ${CONTAINER_NAME} wg show | awk -v ip="${search_ip}/32" '
     /peer:/ { peer=$2 }
     /allowed ips:/ { if ($3==ip) { found=1 } }
     found { print; if (/^$/ || /transfer:/) exit }
     ')
-    
     if [ -n "$peer_data" ]; then
         hs=$(echo "$peer_data" | grep "latest handshake:" | sed "s/.*latest handshake: //")
         transfer=$(echo "$peer_data" | grep "transfer:" | sed "s/.*transfer: //")
@@ -232,10 +226,9 @@ cmd_userstatus() {
                 else if ($2=="second"||$2=="seconds") print $1;
                 else print 99999
             }')
-            if [ "$hs_seconds" -lt 3600 ]; then status="🟢 Онлайн"; else status="🟡 Был сегодня"; fi
+            [ "$hs_seconds" -lt 3600 ] && status="🟢 Онлайн" || status="🟡 Был сегодня"
         fi
     fi
-    
     send_telegram "👤 <b>${name}</b>
 ├ IP: ${search_ip}
 ├ Статус: ${status}
@@ -247,36 +240,23 @@ cmd_userstatus() {
 
 cmd_clients() {
     if ! docker ps | grep -q "${CONTAINER_NAME}"; then
-        send_telegram "❌ <b>VPN Контейнер не запущен!</b>"
-        return
+        send_telegram "❌ <b>VPN Контейнер не запущен!</b>"; return
     fi
-
     local data=$(docker exec ${CONTAINER_NAME} wg show | awk '
     /peer:/ { peer=$2 }
     /allowed ips:/ { ip=$3; sub(/\/32/, "", ip) }
     /latest handshake:/ { handshake=$0; sub(/.*latest handshake: /, "", handshake) }
     /transfer:/ { transfer=$0; sub(/.*transfer: /, "", transfer) }
-    /^$/ {
-        if (peer && ip) {
-            printf "%s|%s|%s|%s\n", ip, peer, handshake, transfer
-        }
-        peer=""; ip=""; handshake=""; transfer=""
-    }
-    END {
-        if (peer && ip) printf "%s|%s|%s|%s\n", ip, peer, handshake, transfer
-    }
+    /^$/ { if (peer && ip) { printf "%s|%s|%s|%s\n", ip, peer, handshake, transfer } peer=""; ip=""; handshake=""; transfer="" }
+    END { if (peer && ip) printf "%s|%s|%s|%s\n", ip, peer, handshake, transfer }
     ')
-
-    local total=0
-    local active=0
+    local total=0 active=0
     local message="👥 <b>Клиенты VPN</b>
 "
-
     while IFS='|' read -r ip peer handshake transfer; do
         ((total++))
         local name=$(get_name_by_ip "$ip")
         [ -z "$name" ] && name="Unknown"
-
         if [ -n "$handshake" ] && [ "$handshake" != "N/A" ]; then
             local hs_seconds=$(echo "$handshake" | awk '{
                 if (NF==0) { print 99999 }
@@ -286,37 +266,23 @@ cmd_clients() {
                 else if ($2=="second" || $2=="seconds") { print $1 }
                 else { print 99999 }
             }')
-            if [ "$hs_seconds" -lt 120 ]; then
-                status="🟢"
-                ((active++))
-            elif [ "$hs_seconds" -lt 86400 ]; then
-                status="🟡"
-            else
-                status="⚪"
-            fi
+            if [ "$hs_seconds" -lt 120 ]; then status="🟢"; ((active++))
+            elif [ "$hs_seconds" -lt 86400 ]; then status="🟡"
+            else status="⚪"; fi
         else
-            status="⚪"
-            handshake="N/A"
+            status="⚪"; handshake="N/A"
         fi
-
         message+="${status} <b>${name}</b> (${ip})
    Rx/Tx: ${transfer:-N/A}
    Last: ${handshake}
 
 "
     done <<< "$data"
-
-    message+="⏱️ Статус по handshake ≤ 2 мин.
-"
     message+="📊 <b>Всего:</b> ${total}
 🟢 <b>Активных:</b> ${active}
 
-<b>Легенда:</b>
-🟢 — онлайн (последний час)
-🟡 — был сегодня
-⚪ — оффлайн
+<b>Легенда:</b> 🟢 онлайн | 🟡 сегодня | ⚪ оффлайн
 ⏰ <b>Время:</b> $(TZ=Europe/Moscow date '+%d.%m.%Y %H:%M')"
-
     send_telegram "$message"
 }
 
@@ -483,7 +449,7 @@ cmd_start() {
 
 echo "🤖 Бот запущен..."
 while true; do
-    UPDATES=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${OFFSET}&timeout=3")
+    UPDATES=$(curl -s --max-time 15 "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${OFFSET}&timeout=3")
     LAST_UPDATE=$(echo "$UPDATES" | grep -o '"update_id":[0-9]*' | tail -1 | cut -d':' -f2)
     if [ -n "$LAST_UPDATE" ]; then
         OFFSET=$((LAST_UPDATE + 1))
