@@ -1,7 +1,5 @@
 # 🛡️ AmneziaWG Secure Infrastructure & Management Bot
 
-Профессиональная инфраструктура для развёртывания, автоматического мониторинга и администрирования защищённого VPN-сервера AmneziaWG на базе ОС **Ubuntu 24.04 LTS**. Проект включает в себя Telegram-бота для интерактивного контроля и веб-панель статуса с аутентификацией.
-
 # 🛡️ AmneziaWG Secure Infrastructure & Management Bot
 
 ![Ubuntu](https://img.shields.io/badge/OS-Ubuntu%2024.04%20LTS-E95420?logo=ubuntu&logoColor=white)
@@ -10,6 +8,10 @@
 ![Python](https://img.shields.io/badge/Backend-Python%203.12-3776AB?logo=python&logoColor=white)
 ![Nginx](https://img.shields.io/badge/Proxy-Nginx-009639?logo=nginx&logoColor=white)
 ![Security](https://img.shields.io/badge/Security-UFW%20%2B%20Fail2ban-red)
+
+Профессиональная инфраструктура для развёртывания, автоматического мониторинга и администрирования защищённого VPN-сервера AmneziaWG на базе ОС **Ubuntu 24.04 LTS**. Проект включает в себя Telegram-бота для интерактивного контроля и веб-панель статуса с аутентификацией.
+
+# 🛡️ AmneziaWG Secure Infrastructure & Management Bot
 
 ## 🌟 Основные возможности
 
