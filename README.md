@@ -40,9 +40,12 @@ chmod +x install.sh
 
 ## 🛡️ Безопасность и Харденинг
 
-- **Защита переменных**: Конфигурационный файл `/root/.vpn-env` закрыт маской `600`.
-- **Systemd Isolation**: Сервисы бота работают с флагами `NoNewPrivileges=true` и `ProtectSystem=full`.
-- **Сетевая безопасность**: UFW открывает только порты `22`, `443` и `45678`. Fail2ban мониторит логи и банит подозрительную активность.
+- **Защита переменных**: Конфигурационный файл `/root/.vpn-env` закрыт маской `600` (только root).
+- **Systemd Isolation**: Сервисы бота работают в песочнице с флагами `NoNewPrivileges=true`, `ProtectSystem=full` и `PrivateTmp=true`.
+- **Сетевая безопасность**: UFW открывает только порты `22`, `443` и `45678`. Fail2ban мониторит логи и банит подозрительную активность с алертами в Telegram.
+- **Синхронизация времени (NTP)**: `systemd-timesyncd` принудительно активен. Это критически важно для предотвращения replay-атак в WireGuard/AmneziaWG.
+- **Защита от переполнения диска**: Docker настроен на автоматическую ротацию логов (макс. 3 файла по 10 МБ), что исключает отказ системы из-за нехватки места.
+- **Hardening Nginx**: Веб-сервер скрыл свою версию (`server_tokens off`) и ограничил максимальный размер запроса (`1M`) для защиты от DoS-атак на панель.
 
 ## 🏗️ Архитектурные схемы
 
@@ -365,18 +368,29 @@ flowchart TD
 ## 🛠️ Шпаргалка админа
 
 ```bash
-# Проверка здоровья системы
+# === МОНИТОРИНГ И СТАТУС ===
+# Проверка здоровья всей системы
 ./install.sh --check
 
 # Статус сервисов
 systemctl status vpn-bot.service
 docker ps --filter name=amnezia-awg2
 
-# Безопасность: просмотр забаненных IP
+# === БЕЗОПАСНОСТЬ ===
+# Просмотр забаненных IP
 sudo fail2ban-client status vpn-monitoring
-sudo fail2ban-client set vpn-monitoring unbanip <IP>
+sudo fail2ban-client set vpn-monitoring unbanip <IP_АДРЕС>
 
-# Обслуживание
-/root/scripts/backup-docker.sh      # Ручной бэкап
-/root/scripts/cleanup-orphans.sh    # Очистка дискового пространства
+# Проверка синхронизации времени (должно быть synchronized: yes)
+timedatectl status | grep synchronized
+
+# Проверка лимитов логов Docker
+cat /etc/docker/daemon.json
+
+# === ОБСЛУЖИВАНИЕ ===
+# Ручной бэкап конфигураций
+/root/scripts/backup-docker.sh
+
+# Очистка дискового пространства и старых образов
+/root/scripts/cleanup-orphans.sh
 ```
