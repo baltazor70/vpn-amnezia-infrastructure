@@ -1,7 +1,5 @@
 # 🛡️ AmneziaWG Secure Infrastructure & Management Bot
 
-# 🛡️ AmneziaWG Secure Infrastructure & Management Bot
-
 ![Ubuntu](https://img.shields.io/badge/OS-Ubuntu%2024.04%20LTS-E95420?logo=ubuntu&logoColor=white)
 ![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker&logoColor=white)
 ![Bash](https://img.shields.io/badge/Scripting-Bash-4EAA25?logo=gnubash&logoColor=white)
