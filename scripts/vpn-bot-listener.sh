@@ -7,10 +7,48 @@ OFFSET=0
 REBOOT_TIMEOUT=60
 RESTART_TIMEOUT=60
 
+# УМНАЯ ОТПРАВКА: автоматически разбивает сообщения длиннее 3800 символов
 send_telegram() {
     local msg="$1"
-    ( curl -s --max-time 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-        -d "chat_id=${CHAT_ID}" -d "text=${msg}" -d "parse_mode=HTML" >/dev/null 2>&1 ) &
+    local max_len=3800
+    
+    # Используем (( )) для корректной арифметики в Bash
+    if (( ${#msg} <= max_len )); then
+        _send_chunk "$msg"
+    else
+        local chunk=""
+        while IFS= read -r line; do
+            if (( ${#chunk} + ${#line} + 2 > max_len )); then
+                _send_chunk "$chunk"
+                chunk="$line"
+                sleep 0.3
+            else
+                if [ -z "$chunk" ]; then
+                    chunk="$line"
+                else
+                    chunk="${chunk}"$'\n'"${line}"
+                fi
+            fi
+        done <<< "$msg"
+        [ -n "$chunk" ] && _send_chunk "$chunk"
+    fi
+}
+
+_send_chunk() {
+    local text="$1"
+    local payload
+    payload=$(python3 -c "
+import json, sys
+lines = sys.stdin.read().split('\n', 1)
+chat_id = lines[0].strip()
+txt = lines[1] if len(lines) > 1 else ''
+print(json.dumps({'chat_id': chat_id, 'text': txt, 'parse_mode': 'HTML'}))
+" <<< "${CHAT_ID}"$'\n'"${text}")
+
+    ( curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+         -H "Content-Type: application/json" \
+         -d "$payload" \
+         --max-time 5 --retry 1 >/dev/null 2>&1 ) &
 }
 
 log_event() {
@@ -44,7 +82,7 @@ check_reboot_confirmation() {
     local flag_time=$(head -1 "$flag_file")
     local now=$(date +%s)
     local diff=$((now - flag_time))
-    if [ "$diff" -gt "$REBOOT_TIMEOUT" ]; then
+    if (( diff > REBOOT_TIMEOUT )); then
         rm -f "$flag_file"
         send_telegram "⏰ <b>Время подтверждения истекло!</b>"
         return 1
@@ -74,7 +112,7 @@ check_restart_confirmation() {
     local flag_time=$(head -1 "$flag_file")
     local now=$(date +%s)
     local diff=$((now - flag_time))
-    if [ "$diff" -gt "$RESTART_TIMEOUT" ]; then
+    if (( diff > RESTART_TIMEOUT )); then
         rm -f "$flag_file"
         send_telegram "⏰ <b>Время подтверждения истекло!</b>"
         return 1
@@ -85,7 +123,7 @@ check_restart_confirmation() {
             rm -f "$flag_file"
             send_telegram "🔄 <b>Перезапуск контейнера...</b>"
             echo "$(date '+%F %T') RESTART by $chat_id" >> /var/log/vpn-bot.log
-            setsid bash -c "sleep 2; docker restart ${CONTAINER_NAME} >/dev/null 2>&1; sleep 5; if docker ps | grep -q ${CONTAINER_NAME}; then curl -s --max-time 10 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=✅ Контейнер перезапущен!' -d parse_mode=HTML >/dev/null 2>&1; else curl -s --max-time 10 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=⚠️ Контейнер не запустился!' -d parse_mode=HTML >/dev/null 2>&1; fi" </dev/null >/dev/null 2>&1 &
+            setsid bash -c "sleep 2; docker restart ${CONTAINER_NAME} >/dev/null 2>&1; sleep 5; if docker ps | grep -q ${CONTAINER_NAME}; then curl -s --max-time 5 --retry 1 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=✅ Контейнер перезапущен!' -d parse_mode=HTML >/dev/null 2>&1; else curl -s --max-time 5 --retry 1 -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d 'text=⚠️ Контейнер не запустился!' -d parse_mode=HTML >/dev/null 2>&1; fi" </dev/null >/dev/null 2>&1 &
             return 0
             ;;
         "нет"|"no"|"cancel"|"отмена"|"❌")
@@ -116,7 +154,7 @@ cmd_status() {
                 else if ($2=="second" || $2=="seconds") { print $1 }
                 else { print 99999 }
             }')
-            [ "$hs_seconds" -le 120 ] && ((ACTIVE_COUNT++))
+            (( hs_seconds <= 120 )) && ((ACTIVE_COUNT++))
         fi
     done <<< "$(echo "$WG_DATA" | grep -A1 "latest handshake")"
 
@@ -226,7 +264,7 @@ cmd_userstatus() {
                 else if ($2=="second"||$2=="seconds") print $1;
                 else print 99999
             }')
-            [ "$hs_seconds" -lt 3600 ] && status="🟢 Онлайн" || status="🟡 Был сегодня"
+            (( hs_seconds < 3600 )) && status="🟢 Онлайн" || status="🟡 Был сегодня"
         fi
     fi
     send_telegram "👤 <b>${name}</b>
@@ -266,8 +304,8 @@ cmd_clients() {
                 else if ($2=="second" || $2=="seconds") { print $1 }
                 else { print 99999 }
             }')
-            if [ "$hs_seconds" -lt 120 ]; then status="🟢"; ((active++))
-            elif [ "$hs_seconds" -lt 86400 ]; then status="🟡"
+            if (( hs_seconds < 120 )); then status="🟢"; ((active++))
+            elif (( hs_seconds < 86400 )); then status="🟡"
             else status="⚪"; fi
         else
             status="⚪"; handshake="N/A"
@@ -308,9 +346,9 @@ cmd_top() {
     local message="🏆 <b>Топ-5 клиентов по трафику</b>
 "
     while IFS='|' read -r name rx tx total; do
-        if [ $total -ge 1073741824 ]; then
+        if (( total >= 1073741824 )); then
             total_hr=$(awk "BEGIN {printf \"%.2f GiB\", $total/1073741824}")
-        elif [ $total -ge 1048576 ]; then
+        elif (( total >= 1048576 )); then
             total_hr=$(awk "BEGIN {printf \"%.2f MiB\", $total/1048576}")
         else
             total_hr=$(awk "BEGIN {printf \"%.2f KiB\", $total/1024}")
@@ -450,13 +488,29 @@ cmd_start() {
 echo "🤖 Бот запущен..."
 while true; do
     UPDATES=$(curl -s --max-time 15 "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${OFFSET}&timeout=3")
-    LAST_UPDATE=$(echo "$UPDATES" | grep -o '"update_id":[0-9]*' | tail -1 | cut -d':' -f2)
-    if [ -n "$LAST_UPDATE" ]; then
-        OFFSET=$((LAST_UPDATE + 1))
-        FROM_CHAT_ID=$(echo "$UPDATES" | grep -oE '"chat":\{"id":[0-9]+' | grep -oE '[0-9]+' | tail -1)
-        [ -z "$FROM_CHAT_ID" ] && FROM_CHAT_ID=$(echo "$UPDATES" | sed -n 's/.*"chat":{"id":\([0-9]*\).*/\1/p' | tail -1)
-        FROM_CHAT_ID=$(echo "$FROM_CHAT_ID" | tr -d ' "')
-        MESSAGE_TEXT=$(echo "$UPDATES" | grep -oE '"text":"[^"]*"' | tail -1 | cut -d'"' -f4)
+    
+    read -r NEW_OFFSET NEXT_CHAT NEXT_TEXT < <(python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    r = d.get("result", [])
+    if not r:
+        print(f"{int(sys.argv[2])} 0 0")
+        sys.exit(0)
+    last = r[-1]
+    new_offset = last.get("update_id", 0) + 1
+    msg = last.get("message", {})
+    chat = msg.get("chat", {}).get("id", 0)
+    text = msg.get("text", "").strip()
+    print(f"{new_offset} {chat} {text}")
+except Exception:
+    print(f"{int(sys.argv[2])} 0 0")
+' "$UPDATES" "$OFFSET" 2>/dev/null || echo "$OFFSET 0 0")
+
+    if [ "$NEXT_CHAT" != "0" ]; then
+        OFFSET="$NEW_OFFSET"
+        FROM_CHAT_ID="$NEXT_CHAT"
+        MESSAGE_TEXT="$NEXT_TEXT"
         log_event "$FROM_CHAT_ID" "$MESSAGE_TEXT"
         if check_reboot_confirmation "$FROM_CHAT_ID" "$MESSAGE_TEXT"; then continue; fi
         if check_restart_confirmation "$FROM_CHAT_ID" "$MESSAGE_TEXT"; then continue; fi
