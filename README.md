@@ -1,147 +1,119 @@
-# 🛡️ VPN Amnezia Infrastructure
+# 🛡️ AmneziaWG Secure Infrastructure & Management Bot
 
-Персональный VPN-сервер на базе AmneziaWG для семьи и друзей.
+Профессиональная инфраструктура для развёртывания, автоматического мониторинга и администрирования защищённого VPN-сервера AmneziaWG на базе ОС **Ubuntu 24.04 LTS**. Проект включает в себя Telegram-бота для интерактивного контроля и веб-панель статуса с аутентификацией.
 
----
+## 🌟 Основные возможности
 
-## 🚀 Быстрый старт
+- **VPN AmneziaWG в Docker**: Контейнеризированный сервер с автоматической установкой и сетевым тюнингом (BBR) для стабильного пинга под нагрузкой.
+- **Интерактивный Telegram-бот**: Полный мониторинг, вывод топа потребителей, перезапуск с системой двухэтапного подтверждения. Использует надежный Python-парсинг JSON.
+- **Безопасная панель Flask**: Доступна на порту `45678` с SSL-сертификатом и паролем администратора.
+- **Эшелонированная оборона**: UFW (запрет по умолчанию), Fail2ban с алертами в Telegram, изоляция процессов через systemd (`ProtectSystem=full`).
+- **Автоматизация Cron**: Мониторинг ресурсов, резервное копирование, очистка мусора и автоматические ночные перезагрузки.
 
-### Установка (только Ubuntu 24.04 LTS)
+## 🛠️ Развёртывание
 
-    curl -s https://raw.githubusercontent.com/baltazor70/vpn-amnezia-infrastructure/main/install.sh | bash
+Запустите установщик на чистой ОС Ubuntu 24.04 LTS от пользователя `root`:
 
-### Проверка системы
+```bash
+chmod +x install.sh
+./install.sh
+```
 
-    bash install.sh --check
+В процессе установки скрипт запросит в защищённом режиме (без вывода на экран):
 
----
+- Токен вашего Telegram-бота (`BOT_TOKEN`).
+- ID чата администратора (`CHAT_ID`).
+- Пароль для входа в панель Flask (`FLASK_ADMIN_PASSWORD`).
 
-## 🔐 Безопасность
+Режим проверки здоровья (Health Check):
 
-- **SSH:** Только аутентификация по ключам
-- **Fail2ban:** Защита SSH и веб-интерфейса
-- **UFW:** Минимальный набор портов (22, 443, 45678)
-- **Секреты:** Все токены в /root/.vpn-env (права 600)
+```bash
+./install.sh --check
+```
 
----
+## 🛡️ Безопасность и Харденинг
 
-## 📦 Что включает
+- **Защита переменных**: Конфигурационный файл `/root/.vpn-env` закрыт маской `600`.
+- **Systemd Isolation**: Сервисы бота работают с флагами `NoNewPrivileges=true` и `ProtectSystem=full`.
+- **Сетевая безопасность**: UFW открывает только порты `22`, `443` и `45678`. Fail2ban мониторит логи и банит подозрительную активность.
 
-### Системные компоненты
-- Docker 29.7 + Amnezia WireGuard
-- Nginx (reverse proxy на порт 45678)
-- Flask (веб-панель мониторинга)
-- Fail2ban + UFW
-- Python 3.12
+## 🏗️ Архитектурные схемы
 
-### Скрипты автоматизации (16 файлов)
-- vpn-bot-listener.sh — Telegram-бот управления
-- vpn-alert.sh — уведомления о подключениях
-- resource-monitor.sh — мониторинг CPU/RAM/Disk
-- metrics-logger.sh — сбор метрик для графиков
-- vpn-monitor.sh — ежедневные отчёты
-- backup-docker.sh — бэкап конфигов
-- auto-reboot.sh — плановые обновления
+### 1. Операционная архитектура
 
----
+```mermaid
+graph TD
+    subgraph Telegram_Cloud [Telegram Cloud Platform]
+        TG_API[Telegram Bot API]
+    end
 
-## 🏗️ Архитектура
+    subgraph Host_Server [Ubuntu 24.04 LTS Server]
+        subgraph Systemd_Services [Systemd Services]
+            BOT_SVC[vpn-bot.service] -->|Запуск| BOT_SCRIPT[vpn-bot-listener.sh]
+            FLASK_SVC[status.service] -->|Запуск| FLASK_APP[app.py]
+        end
 
-    Ubuntu 24.04 LTS
-    ├── Docker: amnezia-awg2 (WireGuard UDP 36991)
-    ├── Nginx:45678 → Flask:8080 (веб-панель)
-    ├── Telegram Bot (vpn-bot-listener.sh)
-    ├── Cron-скрипты мониторинга
-    └── Fail2ban + UFW
+        subgraph Docker_Engine [Docker Engine]
+            AWG_CONT[Container: amnezia-awg2] -->|WG Engine| WG_CORE[WireGuard Kernel Module]
+        end
 
----
+        subgraph Automation [Cron Jobs]
+            CRON[System Crontab] -->|Периодический вызов| ALERTS[vpn-alert.sh]
+            CRON -->|Раз в час| CLEAN[cleanup-orphans.sh]
+            CRON -->|Сбор данных| METRICS[metrics-logger.sh]
+        end
 
-##  Аудит v1.2
+        BOT_SCRIPT -->|Команды CLI| AWG_CONT
+        FLASK_APP -->|Чтение метрик| AWG_CONT
+    end
 
-**Проверено:**
-- ✅ 16 bash-скриптов
-- ✅ Docker-контейнер amnezia-awg2
-- ✅ Системные пакеты (Ubuntu 24.04, Docker, Python, Flask)
-- ✅ Nginx reverse proxy
-- ✅ Fail2ban (исправлен путь к логу)
-- ✅ UFW правила
-- ✅ install.sh (добавлены UFW, скрытый ввод, health-check)
+    BOT_SCRIPT <==>|getUpdates / sendMessage| TG_API
+```
 
-**Исправлено:**
-1. Fail2ban logpath: vpn-status-access.log → access.log
-2. install.sh: добавлены правила UFW
-3. install.sh: скрытый ввод секретов (read -s)
-4. install.sh: финальный health-check
+### 2. Архитектура безопасности
 
----
+```mermaid
+graph LR
+    subgraph Internet [Внешний мир]
+        ATTACKER[Злоумышленник]
+        ADMIN_TG[Администратор]
+    end
 
-## 🧪 Disaster Recovery
+    subgraph Security_Perimeter [Контур безопасности]
+        UFW{UFW Firewall}
+        F2B[Fail2ban Jail]
+        NGINX[Nginx Reverse Proxy]
+        ENV_SEC[(/root/.vpn-env 600)]
 
-### Проверка системы
+        subgraph Trusted_Zone [Доверенная зона]
+            FLASK[Flask Web UI: 8080]
+            BOT[vpn-bot-listener.sh]
+        end
+    end
 
-    ./install.sh --check
+    ATTACKER -->|Скан портов| UFW
+    UFW -->|Порты 22, 443, 45678| F2B
+    F2B -->|Обнаружение аномалий| NGINX
+    NGINX -->|SSL-терминация| FLASK
+    ADMIN_TG <-->|HTTPS API| BOT
+    BOT -->|Чтение секретов| ENV_SEC
+```
 
-### Аудит пиров
+## 🛠️ Шпаргалка админа
 
-    ./audit-peers.sh
+```bash
+# Проверка здоровья системы
+./install.sh --check
 
-Ожидаемый результат: 0 Unknown
+# Статус сервисов
+systemctl status vpn-bot.service
+docker ps --filter name=amnezia-awg2
 
-### Тест watchdog
+# Безопасность: просмотр забаненных IP
+sudo fail2ban-client status vpn-monitoring
+sudo fail2ban-client set vpn-monitoring unbanip <IP>
 
-    docker stop amnezia-awg2
-
-Ожидаемый результат: контейнер восстановится за ≤60 сек
-
-### Экстренное восстановление
-
-**Потеря SSH:**
-1. Использовать консоль провайдера
-2. Проверить: ufw status, fail2ban-client unbanall
-3. Восстановить authorized_keys
-
-**Полная потеря сервера:**
-1. Развернуть Ubuntu 24.04 + Docker
-2. Скопировать /root/backups/vpn/
-3. Запустить install.sh
-
----
-
-## 📋 Telegram-бот
-
-**Команды:**
-- /status — полный статус сервера
-- /users — список пользователей
-- /clients — таблица клиентов
-- /top — топ-5 по трафику
-- /ping — проверка пинга
-- /restart_container — перезапуск контейнера
-- /reboot_server — перезагрузка сервера
-- /help — справка
-
----
-
-## 🌐 Веб-панель
-
-**Доступ:** https://<IP>:45678
-
-**Аутентификация:** Пароль из /root/.vpn-env
-
-**Показывает:**
-- Статус VPN и сервера
-- Ping до Cloudflare и Яндекса
-- Ресурсы (CPU, RAM, диск)
-- Графики за 24 часа
-- Статус Fail2ban
-
----
-
-
-**Контакты:**
-- Issues: https://github.com/baltazor70/vpn-amnezia-infrastructure/issues
-- Discussions: https://github.com/baltazor70/vpn-amnezia-infrastructure/discussions
-
----
-
-> 📄 **License:** MIT  
-
+# Обслуживание
+/root/scripts/backup-docker.sh      # Ручной бэкап
+/root/scripts/cleanup-orphans.sh    # Очистка дискового пространства
+```

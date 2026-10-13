@@ -8,13 +8,6 @@ User=root
 ExecStart=/root/scripts/vpn-bot-listener.sh
 Restart=always
 RestartSec=10
-# --- Security Hardening ---
-ProtectSystem=full
-PrivateTmp=true
-NoNewPrivileges=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
-ReadWritePaths=/root/scripts /var/log /tmp /var/lib/docker /var/run/docker.sock
 
 [Install]
 WantedBy=multi-user.target
