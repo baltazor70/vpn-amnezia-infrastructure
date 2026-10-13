@@ -2,6 +2,15 @@
 
 Профессиональная инфраструктура для развёртывания, автоматического мониторинга и администрирования защищённого VPN-сервера AmneziaWG на базе ОС **Ubuntu 24.04 LTS**. Проект включает в себя Telegram-бота для интерактивного контроля и веб-панель статуса с аутентификацией.
 
+# 🛡️ AmneziaWG Secure Infrastructure & Management Bot
+
+![Ubuntu](https://img.shields.io/badge/OS-Ubuntu%2024.04%20LTS-E95420?logo=ubuntu&logoColor=white)
+![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker&logoColor=white)
+![Bash](https://img.shields.io/badge/Scripting-Bash-4EAA25?logo=gnubash&logoColor=white)
+![Python](https://img.shields.io/badge/Backend-Python%203.12-3776AB?logo=python&logoColor=white)
+![Nginx](https://img.shields.io/badge/Proxy-Nginx-009639?logo=nginx&logoColor=white)
+![Security](https://img.shields.io/badge/Security-UFW%20%2B%20Fail2ban-red)
+
 ## 🌟 Основные возможности
 
 - **VPN AmneziaWG в Docker**: Контейнеризированный сервер с автоматической установкой и сетевым тюнингом (BBR) для стабильного пинга под нагрузкой.
