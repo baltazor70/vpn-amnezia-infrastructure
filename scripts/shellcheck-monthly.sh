@@ -29,7 +29,7 @@ TARGETS=(
 } > "$REPORT" 2>&1
 
 # Сколько реальных предупреждений?
-ISSUE_COUNT=$(grep -cE ':(error|warning):' "$REPORT" || true)
+ISSUE_COUNT=$(grep -cE ':\s*(error|warning):' "$REPORT" || true)
 
 # Логируем всегда
 {
