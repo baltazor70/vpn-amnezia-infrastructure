@@ -515,7 +515,7 @@ except Exception:
         if check_reboot_confirmation "$FROM_CHAT_ID" "$MESSAGE_TEXT"; then continue; fi
         if check_restart_confirmation "$FROM_CHAT_ID" "$MESSAGE_TEXT"; then continue; fi
         case "$MESSAGE_TEXT" in
-            "/status") cmd_status ;;
+            "/status"|"/stat") cmd_status ;;
             "/users") cmd_users ;;
             "/userstatus "*) cmd_userstatus ${MESSAGE_TEXT#* } ;;
             "/clients") cmd_clients ;;
