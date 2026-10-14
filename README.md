@@ -49,7 +49,6 @@ chmod +x install.sh
 Внутренние (только localhost, UFW не пропускает):
 - `8080/tcp` - Flask (gunicorn) за Nginx
 - `53/tcp`   - systemd-resolved (stub resolver)
-- `45419/tcp` - VSCode Remote
 
 Проверка активных правил:
 
