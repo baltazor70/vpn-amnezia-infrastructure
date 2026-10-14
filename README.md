@@ -63,6 +63,8 @@ chmod +x install.sh
 - **Сетевая безопасность**: UFW открывает только порты `22/tcp` (SSH), `45678/tcp` (веб-панель) и `36991/udp` (AmneziaWG, `ALLOW FWD` -> Docker). Fail2ban мониторит логи и банит подозрительную активность с алертами в Telegram.
 - **Синхронизация времени (NTP)**: `systemd-timesyncd` принудительно активен. Это критически важно для предотвращения replay-атак в WireGuard/AmneziaWG.
 - **Защита от переполнения диска**: Docker настроен на автоматическую ротацию логов (макс. 3 файла по 10 МБ), что исключает отказ системы из-за нехватки места.
+- **Fail2ban с recidive-jail**: помимо базовых jail'ов (`sshd`, `vpn-monitoring`) работает `recidive` — рецидивисты получают бан на **7 дней** при 3+ повторных попытках за 24 часа. Читает `/var/log/fail2ban.log` через `backend = polling`, блокирует на уровне iptables (цепочка `f2b-recidive` в `INPUT`).
+- **Автообновления безопасности**: `unattended-upgrades` устанавливает security-патчи Ubuntu ежедневно (обычно в 06:00). В связке с плановым ребутом (Пн/Ср 03:00) это гарантирует применение свежего ядра без ручного вмешательства.
 - **Hardening Nginx**: Веб-сервер скрыл свою версию (`server_tokens off`) и ограничил максимальный размер запроса (`1M`) для защиты от DoS-атак на панель.
 
 ## 🏗️ Архитектурные схемы
@@ -226,66 +228,69 @@ flowchart TD
 ### 3. Модель безопасности (Defense in Depth)
 
 ```mermaid
-flowchart TB
-    subgraph External["⚠️ External Threats"]
-        Attacker["👤 Potential Attacker"]
-        Internet["☁️ Public Internet"]
-    end
-
-    subgraph Perimeter["🛡️ Perimeter Security Layer"]
+flowchart LR
+    subgraph External["⚠️ External"]
         direction TB
-        UFW["🔥 UFW Firewall<br/>Default Policy: DENY ALL<br/>Allowed: 22/tcp, 45678/tcp, 36991/udp"]
-        Fail2ban["🚫 Fail2ban<br/>Jails: sshd, vpn-monitoring<br/>Ban Time: 1h - 24h"]
-        
-        UFW --> Fail2ban
+        Attacker["👤 Attacker"]
+        Internet["☁️ Internet"]
     end
 
-    subgraph AccessControl["🔐 Access Control Layer"]
-        SSHKey["🔑 SSH Key-Only Auth<br/>PasswordAuthentication no"]
-        PortIsolation["🚧 Port Isolation<br/>22: Admin Only<br/>45678: Admin Only<br/>36991: VPN Clients Only"]
-        Fail2banBf["🛑 Fail2ban Brute-Force<br/>MaxRetry: 3-5<br/>FindTime: 10min"]
-        
-        SSHKey --> PortIsolation --> Fail2banBf
-    end
-
-    subgraph SystemIsolation["🔒 System Isolation Layer"]
+    subgraph L1["1️⃣ Perimeter"]
         direction TB
-        SystemdSandbox["⚙️ systemd Sandboxing<br/>vpn-bot.service:<br/>ProtectSystem=full<br/>PrivateTmp=true<br/>NoNewPrivileges=true<br/>ProtectKernelTunables=true"]
-        DockerIsolation["🐳 Docker Isolation<br/>Container: amnezia-awg2<br/>Network: 10.8.1.0/24<br/>No host filesystem access"]
-        
-        SystemdSandbox --> DockerIsolation
+        UFW["🔥 UFW<br/>DENY ALL<br/>22, 45678, 36991"]
+        Fail2ban["🚫 Fail2ban<br/>sshd, vpn-monitoring<br/>recidive (7d)"]
     end
 
-    subgraph DataProtection["🔐 Data Protection Layer"]
-        EnvSecrets["🔑 /root/.vpn-env<br/>Permissions: chmod 600<br/>Owner: root:root<br/>Secrets via ENV variables"]
-        NoPII["❌ No Persistent Peer Data<br/>Logs rotated & cleaned<br/>Only runtime metrics kept"]
-        EncryptedTunnel["🔐 Encrypted WireGuard Tunnel<br/>AmneziaWG Obfuscation<br/>UDP 36991<br/>Modern Cryptography"]
-        
-        EnvSecrets --> NoPII --> EncryptedTunnel
+    subgraph L2["2️⃣ Access Control"]
+        direction TB
+        SSHKey["🔑 SSH Key-Only<br/>PasswordAuth no"]
+        PortIso["🚧 Port Isolation<br/>22/45678/36991"]
+        F2BBrute["🛑 Brute-Force<br/>MaxRetry 3-5"]
     end
 
-    subgraph Monitoring["📊 Monitoring & Alerting"]
-        BotSecure["🤖 Secure Bot Communication<br/>Python json.dumps<br/>Input Sanitization<br/>Regex Validation"]
-        TGBotAPI["☁️ Telegram Bot API<br/>Token in ENV<br/>HTTPS Only"]
-        AdminAlerts["📱 Admin Alerts<br/>Real-time notifications<br/>Ban events<br/>System health"]
-        
-        BotSecure --> TGBotAPI --> AdminAlerts
+    subgraph L3["3️⃣ System Isolation"]
+        direction TB
+        SysdSandbox["⚙️ systemd Sandbox<br/>ProtectSystem=full<br/>NoNewPrivileges=true<br/>PrivateTmp=true"]
+        DockIso["🐳 Docker Isolation<br/>amnezia-awg2<br/>10.8.1.0/24"]
     end
 
-    Attacker -->|"Port Scanning<br/>Brute Force"| UFW
-    Internet -->|"Legitimate Traffic"| UFW
-    UFW --> AccessControl
-    AccessControl --> SystemIsolation
-    SystemIsolation --> DataProtection
-    DataProtection --> Monitoring
-    
-    style Perimeter fill:#ffebee,stroke:#c62828,stroke-width:3px
-    style AccessControl fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style SystemIsolation fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
-    style DataProtection fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style Monitoring fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    subgraph L4["4️⃣ Data Protection"]
+        direction TB
+        Secrets["🔑 /root/.vpn-env<br/>chmod 600<br/>root:root"]
+        NoPeer["❌ No Persistent<br/>Peer Data<br/>Only runtime metrics"]
+        Tunnel["🔐 Encrypted<br/>WireGuard Tunnel<br/>UDP 36991"]
+    end
+
+    subgraph L5["5️⃣ Monitoring"]
+        direction TB
+        BotSec["🤖 Secure Bot<br/>JSON sanitize"]
+        TGAPI["☁️ Telegram API<br/>HTTPS + ENV token"]
+        Alerts["📱 Admin Alerts<br/>Real-time"]
+    end
+
+    Attacker -->|"Scan / Brute"| UFW
+    Internet -->|"Legit"| UFW
+    UFW --> Fail2ban
+    Fail2ban --> SSHKey
+    SSHKey --> PortIso
+    PortIso --> F2BBrute
+    F2BBrute --> SysdSandbox
+    SysdSandbox --> DockIso
+    DockIso --> Secrets
+    Secrets --> NoPeer
+    NoPeer --> Tunnel
+    Tunnel --> BotSec
+    BotSec --> TGAPI
+    TGAPI --> Alerts
+
+    style External fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style L1 fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style L2 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style L3 fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    style L4 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style L5 fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
     style UFW fill:#f44336,stroke:#b71c1c,color:#fff
-    style EnvSecrets fill:#43a047,stroke:#1b5e20,color:#fff
+    style Secrets fill:#43a047,stroke:#1b5e20,color:#fff
 ```
 
 ### 4. Auto-Recovery & Self-Healing
@@ -414,4 +419,18 @@ cat /etc/docker/daemon.json
 
 # Аудит скриптов на ошибки
 shellcheck /root/scripts/*.sh /opt/vpn-amnezia-infrastructure/install.sh
+
+# === RECIDIVE (долгие баны) ===
+# Статус: кого поймал
+sudo fail2ban-client status recidive
+# Реальные правила блокировки в ядре
+sudo iptables -L f2b-recidive -n -v
+# Разбанить вручную (если IP ложный)
+sudo fail2ban-client set recidive unbanip <IP>
+
+# === АВТООБНОВЛЕНИЯ БЕЗОПАСНОСТИ ===
+# Лог: что установилось
+sudo tail -20 /var/log/unattended-upgrades/unattended-upgrades.log
+# Dry-run: что БУДЕТ установлено в след. раз
+sudo unattended-upgrade --dry-run
 ```
