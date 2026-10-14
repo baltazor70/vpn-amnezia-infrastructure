@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck-monthly.sh - ежемесячная проверка всех скриптов через shellcheck
+# Monthly shellcheck run for all scripts (Telegram alert on issues)
 # Алерт в Telegram только при наличии предупреждений.
 
 set -uo pipefail
