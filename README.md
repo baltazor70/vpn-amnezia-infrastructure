@@ -38,11 +38,30 @@ chmod +x install.sh
 ./install.sh --check
 ```
 
+## 🌐 Порты и сетевые правила
+
+| Порт | Протокол | Назначение | UFW-правило |
+|------|----------|------------|-------------|
+| `22` | TCP | SSH-доступ администратора | `ALLOW IN` |
+| `45678` | TCP | Веб-панель (Nginx + Flask, SSL) | `ALLOW IN` |
+| `36991` | UDP | AmneziaWG (VPN-клиенты) | `ALLOW FWD` -> Docker |
+
+Внутренние (только localhost, UFW не пропускает):
+- `8080/tcp` - Flask (gunicorn) за Nginx
+- `53/tcp`   - systemd-resolved (stub resolver)
+- `45419/tcp` - VSCode Remote
+
+Проверка активных правил:
+
+    ufw status numbered
+    docker port amnezia-awg2
+    ss -tulnp | grep LISTEN
+
 ## 🛡️ Безопасность и Харденинг
 
 - **Защита переменных**: Конфигурационный файл `/root/.vpn-env` закрыт маской `600` (только root).
 - **Systemd Isolation**: Сервисы бота работают в песочнице с флагами `NoNewPrivileges=true`, `ProtectSystem=full` и `PrivateTmp=true`.
-- **Сетевая безопасность**: UFW открывает только порты `22`, `443` и `45678`. Fail2ban мониторит логи и банит подозрительную активность с алертами в Telegram.
+- **Сетевая безопасность**: UFW открывает только порты `22/tcp` (SSH), `45678/tcp` (веб-панель) и `36991/udp` (AmneziaWG, `ALLOW FWD` -> Docker). Fail2ban мониторит логи и банит подозрительную активность с алертами в Telegram.
 - **Синхронизация времени (NTP)**: `systemd-timesyncd` принудительно активен. Это критически важно для предотвращения replay-атак в WireGuard/AmneziaWG.
 - **Защита от переполнения диска**: Docker настроен на автоматическую ротацию логов (макс. 3 файла по 10 МБ), что исключает отказ системы из-за нехватки места.
 - **Hardening Nginx**: Веб-сервер скрыл свою версию (`server_tokens off`) и ограничил максимальный размер запроса (`1M`) для защиты от DoS-атак на панель.
@@ -240,7 +259,7 @@ flowchart TB
 
     subgraph DataProtection["🔐 Data Protection Layer"]
         EnvSecrets["🔑 /root/.vpn-env<br/>Permissions: chmod 600<br/>Owner: root:root<br/>Secrets via ENV variables"]
-        NoPII["❌ No Persistent PII Storage<br/>Logs rotated & cleaned<br/>No user data on disk"]
+        NoPII["❌ No Persistent Peer Data<br/>Logs rotated & cleaned<br/>Only runtime metrics kept"]
         EncryptedTunnel["🔐 Encrypted WireGuard Tunnel<br/>AmneziaWG Obfuscation<br/>UDP 36991<br/>Modern Cryptography"]
         
         EnvSecrets --> NoPII --> EncryptedTunnel
@@ -393,4 +412,7 @@ cat /etc/docker/daemon.json
 
 # Очистка дискового пространства и старых образов
 /root/scripts/cleanup-orphans.sh
+
+# Аудит скриптов на ошибки
+shellcheck /root/scripts/*.sh /opt/vpn-amnezia-infrastructure/install.sh
 ```
