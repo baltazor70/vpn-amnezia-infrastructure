@@ -1,0 +1,102 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>VPN GeoMap</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;width:100%;font-family:sans-serif;background:#0f172a;color:#fff;overflow:hidden}
+#map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1}
+.sidebar{position:fixed;top:20px;left:20px;width:20%;min-width:220px;max-height:80vh;overflow-y:auto;background:rgba(15,23,42,0.9);border:1px solid #334155;border-radius:10px;z-index:1000;padding:10px}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+.ci{padding:8px;margin-bottom:5px;background:#1e293b;border-radius:6px;cursor:pointer;font-size:12px;transition:0.2s}
+.ci:hover{background:#3b82f6}
+.ci.act{background:#2563eb;border:1px solid #60a5fa}
+.stats{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(15,23,42,0.9);padding:10px 20px;border-radius:10px;display:flex;gap:15px;font-size:13px;border:1px solid #334155}
+.ctrls{position:absolute;top:20px;right:20px;z-index:1000;display:flex;gap:8px}
+.btn{background:rgba(15,23,42,0.9);border:1px solid #334155;padding:8px 12px;border-radius:8px;color:#fff;cursor:pointer;font-size:13px}
+.btn:hover{background:#3b82f6}
+</style></head><body>
+<div id="map"></div>
+<div class="sidebar" id="list"><div style="text-align:center;padding:10px;color:#64748b">Загрузка...</div></div>
+<div class="ctrls"><button class="btn" onclick="window.location.href='/'">← Панель</button><button class="btn" onclick="loadData()">🔄 Обновить</button></div>
+<div class="stats">
+  <span>Онлайн: <b id="s-act" style="color:#3b82f6">0</b></span>
+  <span>Гео: <b id="s-geo" style="color:#3b82f6">0</b></span>
+  <span>Трафик: <b id="s-trf" style="color:#3b82f6">0</b> GB</span>
+</div>
+<script>
+console.log("🚀 СКРИПТ ЗАПУЩЕН");
+const map = L.map('map', {zoomControl: false}).setView([55.75, 37.61], 5);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 16}).addTo(map);
+L.control.zoom({position: 'topright'}).addTo(map);
+let markers = {};
+
+// Функция смещения маркеров в одном городе, чтобы они не сливались
+function jitter(lat, lon, index, total) {
+    if (total <= 1) return { lat, lon };
+    const angle = (index / total) * Math.PI * 2;
+    const radius = 0.002; // ~200 метров
+    return { lat: lat + radius * Math.sin(angle), lon: lon + radius * Math.cos(angle) };
+}
+
+async function loadData() {
+    try {
+        const response = await fetch('/api/load_map?t=' + Date.now());
+        if (response.status === 401) return window.location.href = '/';
+        const data = await response.json();
+        
+        document.getElementById('s-act').innerText = data.active;
+        document.getElementById('s-geo').innerText = data.fetched_geo;
+        document.getElementById('s-trf').innerText = data.total_gb;
+
+        Object.values(markers).forEach(m => map.removeLayer(m.marker));
+        markers = {};
+        const list = document.getElementById('list');
+        list.innerHTML = '';
+
+        let drawn = 0;
+        const byCity = {};
+        
+        // Группируем для смещения
+        data.peers.forEach(p => {
+            if (p.geo && typeof p.geo.lat === 'number') {
+                const key = p.geo.city + '_' + p.geo.lat.toFixed(2) + '_' + p.geo.lon.toFixed(2);
+                byCity[key].push(p);
+            }
+        });
+
+        Object.values(byCity).forEach(group => {
+            group.forEach((p, index) => {
+                const pos = jitter(p.geo.lat, p.geo.lon, index, group.length);
+                const uid = 'm_' + drawn;
+                
+                const m = L.marker([pos.lat, pos.lon]).addTo(map);
+                m.bindPopup('<b style="color:#60a5fa">👤 ' + p.display_name + '</b><br>📍 ' + p.geo.city + '<br>🌐 ' + p.ext_ip + ' (' + p.isp + ')<br>📥 ' + p.rx + ' | 📤 ' + p.tx);
+                markers[uid] = { marker: m, lat: pos.lat, lon: pos.lon, name: p.display_name };
+                
+                const el = document.createElement('div');
+                el.className = 'ci';
+                el.dataset.uid = uid;
+                el.innerHTML = '👤 <b>' + p.display_name + '</b><br><span style="color:#94a3b8">📍 ' + p.geo.city + '</span><br><span style="color:#cbd5e1">📥 ' + p.rx + ' | 📤 ' + p.tx + '</span>';
+                el.onclick = () => {
+                    document.querySelectorAll('.ci').forEach(e => e.classList.remove('act'));
+                    el.classList.add('act');
+                    map.flyTo([pos.lat, pos.lon], 10, {duration: 1});
+                    setTimeout(() => m.openPopup(), 500);
+                };
+                list.appendChild(el);
+                drawn++;
+            });
+        });
+        
+        if (drawn > 0) {
+            const bounds = L.latLngBounds(Object.values(markers).map(m => [m.lat, m.lon]));
+            map.fitBounds(bounds.pad(0.15));
+        }
+        console.log('✅ Нарисовано маркеров:', drawn);
+    } catch (e) {
+        console.error('❌ ОШИБКА:', e);
+    }
+}
+loadData();
+</script></body></html>
